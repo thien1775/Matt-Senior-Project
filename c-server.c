@@ -66,33 +66,33 @@ int main(int argc , char *argv[])
 	sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&clientLen);
 	printf("Connection accepted\n");
 
-	while(1) { // Continually processes one connection at a time.
+	for (int i = 0; i <10; i++) { // Continually processes one connection at a time.
 	
 	memset(client_message, '\0', sizeof client_message);
 	memset(message, '\0', sizeof message);
 	if( recv(sock , client_message , 200 , 0) < 0)
 	{
 		printf("WIFI recv failed");
+        break;
 	}
+    if (strcmp(client_message, "") == 0){
+        break;
+    }
 	// print reply
 	printf("Client reply : %s\n",client_message);
-	if(strcmp(pMessage,client_message)==0)
-	{
-		strcpy(message,"Hi there from WIFI Server!");
-	}
-	else
-	{
-		strcpy(message,"Invalid Message !");
-	}
-
 	// Send some data
-	/*
-	if( send(sock , message , strlen(message) , 0, client, 200) < 0)
+    
+    strcpy(message,"Hello from server");
+	
+	if( sendto(sock , message , strlen(message) , 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
 	{
-		printf("WIFI Send failed");
-		return 1;
-	}
-	*/
+		printf("WIFI Send failed\n");
+		break;
+	}else{
+        printf("sent \n");
+    }
+    
 	//close(sock);
 	}
+    close(sock);
 }
