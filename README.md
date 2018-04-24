@@ -6,9 +6,9 @@ netstat -np
 
 do this and it might close the socket
 
-kill <PID>
+kill /<PID>
   
-kill -9 <PID>
+kill -9 /<PID>
   
 sudo lsof -i :5555
 
