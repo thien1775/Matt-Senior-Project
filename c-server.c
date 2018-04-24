@@ -6,6 +6,7 @@
 #include<sys/time.h>
 #include<poll.h>
 #include<sys/types.h>
+#include<json.h>
 
 /*
 #define MAX_CONN (2)
@@ -13,6 +14,9 @@
 #define POLL_EXPIRE (0)
 #define POLL_ERR (-1)
 */
+
+unsigned int nodeid = 1604742636;
+unsigned int dest = 2754343401;
 short SocketCreate(void)
 {
 	short hSocket;
@@ -32,8 +36,49 @@ int BindCreatedSocket(int hSocket)
 	return iRetval;
 }
 
+int json_parse(json_object * jobj) {
+    enum json_type type;
+    int temp;
+    json_object_object_foreach(jobj, key, val) {
+        type = json_object_get_type(val);
+        switch (type) {
+            case json_type_int: printf("type: json_type_int, ");
+            temp = json_object_get_int(val);
+            printf("value: %d\n", temp);
+            break;
+        }
+    }
+    return temp;
+}
+
 int main(int argc , char *argv[])
 {
+    //Buffer : {"dest":2754343401,"from":1604742636,"subs":[],"type":6}
+    int state = 0;
+    json_object *jsetup = json_object_new_object();
+    json_object *jdest = json_object_new_int64(dest);
+    json_object *jnodeid = json_object_new_int64(nodeid);
+    json_object *jtype = json_object_new_int64(6);
+    json_object *jsub = json_object_new_array();
+    json_object_object_add(jsetup,"dest", jdest);
+    json_object_object_add(jsetup,"from", jnodeid);
+    json_object_object_add(jsetup,"subs", jsub);
+    json_object_object_add(jsetup,"type", jtype);
+    printf ("The json object created: %s\n",json_object_to_json_string(jsetup));
+    //
+    //{"dest":0,"from":1604742636,"msg":"{\"nodeId\":1604742636,\"topic\":\"logNode_LISTENER\"}","type":8} 
+    json_object *jsend = json_object_new_object();
+    json_object *jdest2 = json_object_new_int64(0);
+    json_object *jnodeid2 = json_object_new_int64(nodeid);
+    json_object *jtype2 = json_object_new_int64(8);
+    json_object *jmes = json_object_new_string("hello");
+    json_object_object_add(jsend,"dest", jdest2);
+    json_object_object_add(jsend,"from", jnodeid2);
+    json_object_object_add(jsend,"msg", jmes);
+    json_object_object_add(jsend,"type", jtype2);
+    printf ("The json object created: %s\n",json_object_to_json_string(jsend));
+    
+    
 	int socket_desc , sock , clientLen , read_size;
 	int WIFI_flag , sfds[2] , afd;
 	struct sockaddr_in server , client;
@@ -80,19 +125,44 @@ int main(int argc , char *argv[])
     }
 	// print reply
 	printf("Client reply : %s\n",client_message);
+    json_object *jrecive = json_tokener_parse(client_message);
+    int type = json_parse(jrecive);
+    printf("type :%d\n", type);
+    
 	// Send some data
     
     strcpy(message,"Hello from server");
-	
-	if( sendto(sock , message , strlen(message) , 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
-	{
-		printf("WIFI Send failed\n");
-		break;
-	}else{
-        printf("sent \n");
+	switch(type){
+        case 4:
+            if( sendto(sock , json_object_to_json_string(jsetup) , 100, 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
+        {
+            printf("WIFI Send failed\n");
+            break;
+        }else{
+            printf("sent \n");
+        }
+        case 5 :
+        if( sendto(sock , json_object_to_json_string(jsetup) , 100, 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
+        {
+            printf("WIFI Send failed\n");
+            break;
+        }else{
+            printf("sent \n");
+        }
+        state = 1;
+        default:
+        if( sendto(sock , json_object_to_json_string(jsend) , 100, 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
+        {
+            printf("WIFI Send failed\n");
+            break;
+        }else{
+            printf("sent \n");
+        }
+        state = 0;
     }
     
 	//close(sock);
 	}
     close(sock);
+    
 }
