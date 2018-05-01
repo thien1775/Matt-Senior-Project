@@ -12,12 +12,32 @@
 #include<assert.h>
 #include<stdlib.h>
 #include <unistd.h>
-/*
-#define MAX_CONN (2)
-#define TIMEOUT (1000)
+
+
+#include<setjmp.h>
+#define TRY do { jmp_buf ex_buf__; switch( setjmp(ex_buf__) ) { case 0: while(1) {
+#define CATCH(x) break; case x:
+#define FINALLY break; } default: {
+#define NTRY break; } } }while(0)
+#define THROW(x) longjmp(ex_buf__, x)
+
+#define NO_RESPONSE (1)
+
+
+#define MAX_CONN (3)
+#define TIMEOUT (10000)
 #define POLL_EXPIRE (0)
 #define POLL_ERR (-1)
-*/
+#define DEBUG
+
+
+#ifdef DEBUG
+#  define D(x) x
+#else
+#  define D(x) 
+#endif
+
+
 
 unsigned int nodeid = 1604742636;
 unsigned int dest = 2754343401;
@@ -25,35 +45,59 @@ unsigned int dest = 2754343401;
 json_object *jsetup;
 json_object *jtime;
 
+int time_delay = 1000;
+
     
 int socket_desc , sock , clientLen , read_size;
 
 int WIFI_flag , sfds[2] , afd;
 struct sockaddr_in server , client;
-char client_message[200]={0};
+char client_message[500]={0};
 char message[100] = {0};
 const char *pMessage = "test";
 int makethread = 0;
 
-unsigned int  timer[4];
+unsigned int  timer[5];
+int recv_Size= 150;
 
 
 
 void send_setup(int type);
-
-void error(const char *msg){
-    close(sock);
-    perror(msg);
-    exit(0);
-}
+int SocketRestart(int hSocket);
+int BindCreatedSocket(int hSocket);
+void error(const char *msg);
 
 short SocketCreate(void)
 {
 	short hSocket;
-	printf("Create the socket\n");
+	D(printf("Create the socket\n"));
 	hSocket = socket(AF_INET, SOCK_STREAM, 0);
 	return hSocket;
 }
+
+int SocketRestart(int hSocket){
+	D(printf("Socket Restart\n"));
+    D(printf("shut down work %d", shutdown (sock,2)));
+    sleep(5);
+	socket_desc = SocketCreate();
+	BindCreatedSocket(socket_desc);
+	//Listen;
+	listen(socket_desc , 3);
+	
+	// Add sockets to poll list
+	//pfds[0].fd = socket_desc;
+	//pfds[0].events = POLLIN;
+    sleep(1);
+	return 1;
+}
+
+void error(const char *msg){
+    //close(sock);
+    perror(msg);
+    //exit(0);
+	SocketRestart(sock);
+}
+
 int BindCreatedSocket(int hSocket)
 {
 	int iRetval=-1;
@@ -80,7 +124,7 @@ int get_type(json_object * jobj) {
     json_object_object_foreach(jobj, key, val) {
         if(json_object_get_type(val) == json_type_int && strcmp(key,"type") == 0){
             int temp = json_object_get_int(val);
-            printf("%s :%d\n", key, temp);
+            D(printf("%s :%d\n", key, temp));
             return temp;
         }
     }
@@ -110,15 +154,17 @@ void send_time(json_object * jobj, int message_type){
         json_object_object_foreach(temp, key2, val2) {
             if(strcmp(key2,"type")==0){
                 timer[0] = json_object_get_int(val2);
-                if(timer[0]== 2){
-                    send_setup(5);
-                    return;
-                }
-            }else if (strcmp(key2,"t0")==0){
+            }else if(strcmp(key2,"t0")==0){
                 timer[1] = json_object_get_int(val2);
+            }else if(strcmp(key2,"t1")==0){
+                timer[2] = json_object_get_int(val2);
+            }else if(strcmp(key2,"t2")==0){
+                timer[3] = json_object_get_int(val2);
             }
         }
-        timer[2] =  (getTime()- startTime)+ timer[1];
+        if(timer[0] == 1){
+            timer[2] =  (getTime()- startTime)+ timer[1];
+        }
     }else if(message_type == 6){
         timer[0] = 0;
     }
@@ -153,6 +199,11 @@ void send_time(json_object * jobj, int message_type){
             json_object_object_add(jmes,"t2", jt2);
             break;
         case 2:
+            timer[4]= (getTime()- startTime)+ timer[1];
+            //time_delay = abs((timer[2]-timer[1])/2 + (timer[2]-timer[3]))/1000;
+            time_delay =abs((timer[3]-timer[0]) - (timer[2]-timer[1]));
+            D(printf("time delay %d\n", time_delay));
+            send_setup(5);
             return;
     }
     //json_object_object_add(jmes,"type", jtype2);
@@ -162,7 +213,7 @@ void send_time(json_object * jobj, int message_type){
     json_object_object_add(jsend,"type", jtype1);
     
     //printf ("print json \n");
-    printf ("The json object created: %s\n",json_object_to_json_string(jsend));
+    D(printf ("The json object created: %s\n",json_object_to_json_string(jsend)));
     if( sendto(sock , json_object_to_json_string(jsend) , 200, 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
     {
         error("WIFI Send failed\n");
@@ -184,12 +235,12 @@ void send_setup(int type){
     json_object_object_add(jsetup,"from", jnodeid);
     json_object_object_add(jsetup,"subs", jsub);
     json_object_object_add(jsetup,"type", jtype);
-    printf ("The json object created: %s\n",json_object_to_json_string(jsetup));
+    D(printf ("The json object created: %s\n",json_object_to_json_string(jsetup)));
     if( sendto(sock , json_object_to_json_string(jsetup) , 200, 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
     {
         error("WIFI Send failed\n");
     }else{
-        printf("sent\n");
+        D(printf("sent\n"));
     }
 }
 
@@ -209,113 +260,201 @@ void send_broadcast(char * message){
             json_object_object_add(jsend,"from", jnodeid);
             json_object_object_add(jsend,"msg", jmes);
             json_object_object_add(jsend,"type", jtype);
-            printf ("The json object created: %s\n",json_object_to_json_string(jsend));
+            printf D(("The json object created: %s\n",json_object_to_json_string(jsend)));
             if( sendto(sock , json_object_to_json_string(jsend) , 200, 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
             {
+				printf("Send to failed.\n");
                 error("WIFI Send failed\n");
             }else{
-                printf("sent\n");
+                D(printf("sent\n"));
             }
             /*sleep(5);
-
     }
     makethread = 0;
     pthread_exit(0);*/
+}
+
+int recive_message(){
+    while(1){
+        memset(client_message, '\0', sizeof client_message);
+        int left = 0 ;
+        int right = 0;
+        int overbound = 0;
+        if( recv(sock , client_message , recv_Size, 0) < 0)
+        {
+            printf("WIFI recv failed");
+            printf("Here1:\n");
+            return -1;
+        }
+        if (strcmp(client_message, "") == 0){
+            return -1;
+        }
+        D(printf("Client reply : %s\n",client_message));
+        for(int i = 0; i < recv_Size; i++){
+            switch(client_message[i]){
+                case '{':
+                    printf("%c %c\n", client_message[i+1], client_message[i+2]);
+                    left++;
+                    break;
+                case '}':
+                    right++;
+                    break;
+            }
+            if(left - right == 0 && i  != recv_Size-1){
+                overbound = 1;
+            }
+        }
+        if (overbound == 1 && left - right != 0){
+            D(printf("over bound %d %d %d \n", left, right , recv_Size));
+            recv_Size = recv_Size - 12 ;
+        }else if (left - right != 0){
+            D(printf("to small %d %d %d \n", left, right , recv_Size));
+            recv_Size = recv_Size + 12*(left - right);
+        }else{
+            return 1;
+        }
+    }
+    return 1;
 }
 
 int main(int argc , char *argv[])
 {
     int state = 0;
     int threads = 1;
+	int pollRes;
 
     pthread_t p[threads];
     
-	//Create socket
-	socket_desc = SocketCreate();
-	if (socket_desc == -1)
-	{
-		printf("Could not create socket");
-		return 1;
-	}
-
-	printf("Sockets created\n");
-	//Bind
-	if( BindCreatedSocket(socket_desc) < 0)
-	{
-	//print the error message
-		perror("bind failed.");
-		return 1;
-	}
-
-	printf("bind done\n");
-	//Listen;
-	listen(socket_desc , 3);
-	
-	//accept the connection
-	clientLen = sizeof(struct sockaddr_in);
-	sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&clientLen);
-	printf("Connection accepted\n");
-
-
+    // poll Struct: Only polling one socket.
+    struct pollfd pfds[1];
     
-	while(1) { // Continually processes one connection at a time.
-        memset(client_message, '\0', sizeof client_message);
-        memset(message, '\0', sizeof message);
-        if( recv(sock , client_message , 150 , 0) < 0)
-        {
-            printf("WIFI recv failed");
-            break;
-        }
-        if (strcmp(client_message, "") == 0){
-            break;
-        }
-        // print reply
-        printf("Client reply : %s\n",client_message);
-        json_object *jrecive = json_tokener_parse(client_message);
-        int type = get_type(jrecive);
-        
-        // Send some data
-        
-//        if(makethread == 0){
-//            for (int i=0; i<threads; i++) {
-//                int index = i;	
-//                int rc = pthread_create(&p[i],NULL,send_broadcast("hello my name is thien"),(void*)index);
-//                assert(rc == 0);
-//            }
-//           makethread = 666;
-//        }
+	// Connection, outter loop: Sets up the socket then starts the inner loop. Upon exiting inner
+	//	the socket is closed and then restarts the outer loop.
+	while(1)
+	{
+		//Create socket
+		socket_desc = SocketCreate();
+		if (socket_desc == -1)
+		{
+			printf("Could not create socket");
+			return 1;
+		}
 
-        printf("Hello from server, type %d\n", type);
-        switch(type){
-            case 4:
-                printf("time\n");
-                send_time(jrecive, 4);
-                send_broadcast("hello my name is thien");
-                break;
-            case 5 :
-                printf("setup\n");
-                send_setup(6);
-                send_broadcast("hello my name is thien");
-                break;
-            case 6 :
-                printf("response\n");
-                send_time(jrecive, 6);
-                break;
-            case 8 :
-                printf("broadcast message\n");
-                send_broadcast("hello my name is thien");
-            /*default:
-                printf("broadcase\n");
-                send_broadcast("hello my name is thien");
-                break;*/
-        }
+		D(printf("Sockets created\n"));
+		//Bind
+		if( BindCreatedSocket(socket_desc) < 0)
+		{
+		//print the error message
+			perror("bind failed.");
+			return 1;
+		}
+
+		D(printf("bind done\n"));
+		//Listen;
+		listen(socket_desc , 3);
+		
+		// Add sockets to poll list
+
+		
+		//accept the connection
+		clientLen = sizeof(struct sockaddr_in);
+		sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&clientLen);
         
-        //close(sock);
+        pfds[0].fd = sock;
+		pfds[0].events = POLLIN;
+		D(printf("Connection accepted\n"));
+
+
+		int type;
+		json_object *jrecive;
+		while(1) { // Communication, inner loop: Connection accepted, continually processes one connection at a time.
+
+			
+			// Start of polling case.
+			D(printf("Start of polling loop.\n"));
+			pollRes = poll(pfds, (unsigned int)MAX_CONN, TIMEOUT);
+			switch(pollRes)
+			{
+				case POLL_EXPIRE:
+					printf("Timeout has expired !\n");
+					error("TimeOut\n");
+					break;
+				case POLL_ERR:
+					error("Error on poll\n");
+                    break;
+				default:
+					D(printf("Default.\n"));
+					if(1 /*pfds[0].revents & POLLIN*/ )
+					{
+						D(printf("POLLIN & revents 1\n"));
+						//Place connection activities here.
+                        if(recive_message() < 0){
+                            perror("recv\n");
+                            break;
+                        }
+						/*if( recv(sock , client_message , recv_Size, 0) < 0)
+						{
+							printf("WIFI recv failed");
+							printf("Here1:\n");
+							break;
+						}
+						if (strcmp(client_message, "") == 0){
+							break;
+						}*/
+						
+						// print reply
+						printf("Client reply : %s\n",client_message);
+						if(client_message[0] != '{'){
+								continue;
+						}
+						jrecive = json_tokener_parse(client_message);
+						type = get_type(jrecive);
+
+						// Send some data
+						
+				//        if(makethread == 0){
+				//            for (int i=0; i<threads; i++) {
+				//                int index = i;	
+				//                int rc = pthread_create(&p[i],NULL,send_broadcast("hello my name is thien"),(void*)index);
+				//                assert(rc == 0);
+				//            }
+				//           makethread = 666;
+				//        }
+
+						D(printf("Hello from server, type %d\n", type));
+						switch(type){
+							case 4:
+								D(printf("time\n"));
+								send_time(jrecive, 4);
+								send_broadcast("hello my name is thien");
+								break;
+							case 5 :
+								D(printf("setup\n"));
+								send_setup(6);
+								send_broadcast("hello my name is thien");
+								break;
+							case 6 :
+								D(printf("response\n"));
+								send_time(jrecive, 6);
+								break;
+							case 8 :
+								D(printf("broadcast message\n"));
+								send_broadcast("hello my name is thien");
+							/*default:
+								printf("broadcase\n");
+								send_broadcast("hello my name is thien");
+								break;*/
+						}
+						usleep(time_delay);
+					}
+			}
+			
+			//close(sock);
+		}
+		for (int i=0; i<threads; i++) { 
+			int rc = pthread_join(p[i],NULL);
+			assert(rc == 0);
+		}
+		close(sock);
 	}
-    for (int i=0; i<threads; i++) { 
-		int rc = pthread_join(p[i],NULL);
-		assert(rc == 0);
-    }
-    close(sock);
-    
 }
