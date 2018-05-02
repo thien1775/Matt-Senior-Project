@@ -28,7 +28,8 @@
 #define TIMEOUT (10000)
 #define POLL_EXPIRE (0)
 #define POLL_ERR (-1)
-#define DEBUG
+
+//#define DEBUG
 
 
 #ifdef DEBUG
@@ -63,7 +64,7 @@ int recv_Size= 150;
 
 
 void send_setup(int type);
-int SocketRestart(int hSocket);
+int SocketRestart();
 int BindCreatedSocket(int hSocket);
 void error(const char *msg);
 
@@ -75,19 +76,40 @@ short SocketCreate(void)
 	return hSocket;
 }
 
-int SocketRestart(int hSocket){
+int SocketRestart(){
 	D(printf("Socket Restart\n"));
-    D(printf("shut down work %d", shutdown (sock,2)));
-    sleep(5);
-	socket_desc = SocketCreate();
-	BindCreatedSocket(socket_desc);
-	//Listen;
-	listen(socket_desc , 3);
-	
-	// Add sockets to poll list
-	//pfds[0].fd = socket_desc;
-	//pfds[0].events = POLLIN;
-    sleep(1);
+    D(printf("shut down work %d", shutdown(sock,2)));
+    D(printf("close work %d", close(sock)));
+    D(printf("shut down work %d", shutdown(sock,2)));
+    D(printf("close work %d", close(sock)));
+    sleep(30);
+    socket_desc = SocketCreate();
+    if (socket_desc == -1)
+    {
+        printf("Could not create socket");
+        return 1;
+    }
+
+    D(printf("Sockets created\n"));
+    //Bind
+    if( BindCreatedSocket(socket_desc) < 0)
+    {
+    //print the error message
+        perror("bind failed.");
+        return 1;
+    }
+
+    D(printf("bind done\n"));
+    //Listen;
+    listen(socket_desc , 3);
+    
+    // Add sockets to poll list
+
+    
+    //accept the connection
+    clientLen = sizeof(struct sockaddr_in);
+    sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&clientLen);
+    
 	return 1;
 }
 
@@ -95,7 +117,7 @@ void error(const char *msg){
     //close(sock);
     perror(msg);
     //exit(0);
-	SocketRestart(sock);
+	SocketRestart();
 }
 
 int BindCreatedSocket(int hSocket)
@@ -274,13 +296,37 @@ void send_broadcast(char * message){
     pthread_exit(0);*/
 }
 
+
+int timeout_recv(int timeoutinseconds){
+    fd_set socks;
+    struct timeval t;
+    FD_ZERO(&socks);
+    FD_SET(sock, &socks);
+    t.tv_sec = timeoutinseconds;
+    t.tv_usec = 0;
+    int temp = select(sock + 1, &socks, NULL, NULL, &t);
+    if (temp >0){
+	printf("listen \n");
+        if( recv(sock , client_message , recv_Size, 0) == 10060){
+            return -1;
+        }
+        return 1;
+    }else{
+        printf("fail\n");
+        return -1;
+    }
+}
+
+
+
+
 int recive_message(){
     while(1){
         memset(client_message, '\0', sizeof client_message);
         int left = 0 ;
         int right = 0;
         int overbound = 0;
-        if( recv(sock , client_message , recv_Size, 0) < 0)
+        if( timeout_recv(5) < 0)
         {
             printf("WIFI recv failed");
             printf("Here1:\n");
@@ -389,7 +435,7 @@ int main(int argc , char *argv[])
 						D(printf("POLLIN & revents 1\n"));
 						//Place connection activities here.
                         if(recive_message() < 0){
-                            perror("recv\n");
+                            error("recv\n");
                             break;
                         }
 						/*if( recv(sock , client_message , recv_Size, 0) < 0)
