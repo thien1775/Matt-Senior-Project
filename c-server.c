@@ -69,7 +69,7 @@ int recv_Size= 150;
 
 
 void send_setup(int type);
-int SocketRestart();
+int SocketRestart(int hSocket);
 int BindCreatedSocket(int hSocket);
 void error(const char *msg);
 
@@ -81,25 +81,27 @@ int SocketCreate(void)
 	return hSocket;
 }
 
-int SocketRestart(){
+int SocketRestart(int hSocket){
     int yes=1;
-    if (setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
+    if (setsockopt(hSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
         perror("setsockopt");
         exit(1);
     }
     memset(&client,0,sizeof(client));
+    clientLen = sizeof(struct sockaddr_in);
 	SOCKET(printf("Socket Restart\n"));
     SOCKET(printf("shut down work %d\n", shutdown(sock,2)));
     SOCKET(printf("close work %d\n", close(sock)));
     sleep(10);
 
-    listen(socket_desc , 3);
+    listen(hSocket , 3);
     
     // Add sockets to poll list
     //accept the connection
     //socklen_t cli_addr_size = sizeof(client);
     //sock = accept(serv_socket,(struct sockaddr *) &cli_addr,&cli_addr_size);
-    sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&clientLen);
+    
+    sock = accept(hSocket, (struct sockaddr *)&client, (socklen_t*)&clientLen);
     
 	return 1;
 }
@@ -108,7 +110,7 @@ void error(const char *msg){
     //close(sock);
     perror(msg);
     //exit(0);
-	SocketRestart();
+	SocketRestart(socket_desc);
 }
 
 int BindCreatedSocket(int hSocket)
@@ -384,10 +386,6 @@ int main(int argc , char *argv[])
     //Listen;
     listen(socket_desc , 3);
     
-    // Add sockets to poll list
-
-    
-    //accept the connection
     clientLen = sizeof(struct sockaddr_in);
     sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&clientLen);
     
@@ -421,7 +419,6 @@ int main(int argc , char *argv[])
         type = get_type(jrecive);
 
         // Send some data
-        
 //        if(makethread == 0){
 //            for (int i=0; i<threads; i++) {
 //                int index = i;	
