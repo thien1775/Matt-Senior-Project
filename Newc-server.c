@@ -53,56 +53,53 @@ json_object *jtime;
 
 int time_delay = 1000;
 
-    
-int socket_desc , sock , clientLen , read_size;
 
-int WIFI_flag , sfds[2] , afd;
-struct sockaddr_in client;
-char client_message[1000]={0};
 char message[100] = {0};
-const char *pMessage = "test";
 int makethread = 0;
 
 unsigned int  timer[5];
 unsigned int from[10];
 int sizeSub = 0;
-int recv_Size= 150;
 
 
 
-void send_setup(int type);
-int SocketRestart(int hSocket);
+int send_setup    (unsigned int from, int type, int sock, sockaddr_in client);
+int send_broadcast(unsigned int from,char * message, int sock, sockaddr_in client);
+int send_time     (unsigned int from, int type, json_object * jobj, int sock, sockaddr_in client);
 int BindCreatedSocket(int hSocket);
-void error(const char *msg);
-
-
-void error(const char *msg){
-    //close(sock);
-    perror(msg);
-    //exit(0);
-	SocketRestart(socket_desc);
-}
+void error(const char *msg, int socket_desc, int* sock);
+void SocketRestart(int socket_des, int* sock);
+void printMessage(int from, char* msg);
+int timeout_recv(int timeoutinseconds, char* client_message, int sock, int recv_Size);
+int recive_message(sockaddr_in client, int sock, int recv_Size);
 
 int SocketCreate(void)
 {
-	int hSocket;
+	int socket_desc;
 	SOCKET(printf("Create the socket\n"));
-	hSocket = socket(AF_INET, SOCK_STREAM, 0);
+	socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     int iRetval=-1;
 	int ClientPort = 5555;
 	struct sockaddr_in  remote={0};
 	remote.sin_family = AF_INET; /* Internet address family */
 	remote.sin_addr.s_addr = htonl(INADDR_ANY); /* Any incoming interface */
 	remote.sin_port = htons(ClientPort); /* Local port */
-	if( iRetval = bind(hSocket,(struct sockaddr *)&remote,sizeof(remote))< 0){
+	if( iRetval = bind(socket_desc,(struct sockaddr *)&remote,sizeof(remote))< 0){
         perror("BIND FAIL");
     }
-	return hSocket;
+	return  ;
 }
 
-int SocketRestart(int hSocket){
+void error(const char *msg, int socket_desc, int* sock){
+    //close(sock);
+    perror(msg);
+    //exit(0);
+	SocketRestart(socket_desc, sock);
+}
+
+void SocketRestart(int socket_des, int* sock){
     int yes=1;
-    if (setsockopt(hSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
+    if (setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
         perror("setsockopt");
         exit(1);
     }
@@ -113,13 +110,13 @@ int SocketRestart(int hSocket){
     SOCKET(printf("close work %d\n", close(sock)));
     sleep(10);
 
-    listen(hSocket , 3);
+    listen(socket_desc , 3);
     
     // Add sockets to poll list
     //accept the connection
     
     socklen_t cli_addr_size = sizeof(client);
-    sock = accept(hSocket,(struct sockaddr *) &client,&cli_addr_size);
+    *sock = accept(socket_desc,(struct sockaddr *) &client,&cli_addr_size);
     
     //sock = accept(hSocket, (struct sockaddr *)&client, (socklen_t*)&clientLen);
     char *ip = inet_ntoa(client.sin_addr);
@@ -151,26 +148,11 @@ int startParse(json_object * jobj) {
     return 0;
 }
 
-void send_time(json_object * jobj, int message_type){
+int send_time(unsigned int from, int type, json_object * jobj, int sock, sockaddr_in client){
     unsigned int startTime = getTime();
-    enum json_type type;
-    int i = 0;
-    json_object * temp;
-    unsigned int from = 0;
-    json_object_object_foreach(jobj, key1, val1) {
-        if(strcmp(key1,"from")==0){
-            from = json_object_get_int(val1);
-            if(message_type != 4){
-                break;
-            }
-        }
-        if(message_type == 4 && strcmp(key1,"msg")==0){
-            temp = json_object_get(val1);
-            break;
-        }
-    }
-    if(message_type == 4){
-        json_object_object_foreach(temp, key2, val2) {
+    
+    if(type == 4){
+        json_object_object_foreach(jobj, key2, val2) {
             if(strcmp(key2,"type")==0){
                 timer[0] = json_object_get_int(val2);
             }else if(strcmp(key2,"t0")==0){
@@ -184,7 +166,7 @@ void send_time(json_object * jobj, int message_type){
         if(timer[0] == 1){
             timer[2] =  (getTime()- startTime)+ timer[1];
         }
-    }else if(message_type == 6){
+    }else if(type == 6){
         timer[0] = 0;
     }
         
@@ -234,16 +216,17 @@ void send_time(json_object * jobj, int message_type){
     TALK(printf ("The json object created: %s\n",json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)));
     if( sendto(sock , json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN) , strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)), 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
     {
-        error("WIFI Send failed\n");
+        return -1;
     }else{
         TALK(printf("sent \n"));
+        return 1;
     }
     
 }
    
-void send_setup(int type){
+int send_setup(unsigned int from, int type,  int sock, sockaddr_in client){
     json_object *jsetup = json_object_new_object();
-    json_object *jdest = json_object_new_int64(dest);
+    json_object *jdest = json_object_new_int64(from);
     json_object *jnodeid = json_object_new_int64(nodeid);
     json_object *jtype = json_object_new_int64(type);
     json_object *jsub = json_object_new_array();
@@ -254,55 +237,39 @@ void send_setup(int type){
     TALK(printf ("The json object created: %s\n",json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN)));
     if( sendto(sock , json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN) ,strlen(json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN)), 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
     {
-        error("WIFI Send failed\n");
+        return -1;
     }else{
         TALK(printf("sent\n"));
+        return 1;
     }
 }
 
-void send_broadcast(char * message){
-    /*struct timespec time;
-    clock_gettime(CLOCK_MONOTONIC, &time);
-    unsigned int start = time.tv_sec;
-    printf("%d \n", start);
-    for(int i = 0; i < 5; i ++){*/
+int send_broadcast(unsigned int from,char * message, int sock, sockaddr_in client){
 
-            json_object *jsend = json_object_new_object();
-            json_object *jdest = json_object_new_int64(0);
-            json_object *jnodeid = json_object_new_int64(nodeid);
-            json_object *jtype = json_object_new_int64(8);
-            json_object *jmes = json_object_new_string(message);
-            json_object_object_add(jsend,"dest", jdest);
-            json_object_object_add(jsend,"from", jnodeid);
-            json_object_object_add(jsend,"msg", jmes);
-            json_object_object_add(jsend,"type", jtype);
-            TALK(printf("The json object created: %s\n",json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)));
-            if( sendto(sock , json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN) , strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)), 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
-            {
-				printf("Send to failed.\n");
-                error("WIFI Send failed\n");
-            }else{
-                TALK(printf("sent\n"));
-            }
-            /*sleep(5);
+    json_object *jsend = json_object_new_object();
+    json_object *jdest = json_object_new_int64(0);
+    json_object *jnodeid = json_object_new_int64(nodeid);
+    json_object *jtype = json_object_new_int64(8);
+    json_object *jmes = json_object_new_string(message);
+    json_object_object_add(jsend,"dest", jdest);
+    json_object_object_add(jsend,"from", jnodeid);
+    json_object_object_add(jsend,"msg", jmes);
+    json_object_object_add(jsend,"type", jtype);
+    TALK(printf("The json object created: %s\n",json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)));
+    if( sendto(sock , json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN) , strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)), 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
+    {
+        return -1;
+    }else{
+        TALK(printf("sent\n"));
+        return 1;
     }
-    makethread = 0;
-    pthread_exit(0);*/
 }
 
-void printMessage(json_object * jobj){
-    json_object_object_foreach(jobj, key1, val1) {
-        if(strcmp(key1,"from")==0){
-            printf("from %d: ",  json_object_get_int(val1));
-        }else if(strcmp(key1,"msg")==0){
-            printf("%s\n",  json_object_get_string(val1));
-            break;
-        }
-    }
-
+void printMessage(int from, char* msg){
+    printf("from %d: %s",  from, msg);
 }
 
-int timeout_recv(int timeoutinseconds){
+int timeout_recv(int timeoutinseconds, char* client_message, int sock, int recv_Size){
     fd_set socks;
     struct timeval t;
     FD_ZERO(&socks);
@@ -322,7 +289,7 @@ int timeout_recv(int timeoutinseconds){
     }
 }
 
-int recive_message(){
+int recive_message(char* client_message, sockaddr_in client, int sock, int recv_Size){
     while(1){
         memset(client_message, '\0', sizeof client_message);
         int left = 0 ;
@@ -365,6 +332,11 @@ int recive_message(){
 }
 
 void server_node(){
+    struct sockaddr_in client;
+    int socket_desc , sock , clientLen , read_size;
+    char client_message[1000]={0};
+    char message[100] = {0};
+    int recv_Size= 150;
     socket_desc = SocketCreate();
     if (socket_desc == -1)
     {
@@ -455,7 +427,7 @@ void server_node(){
         switch(type){
             case 4:
                 TALK(printf("time\n"));
-                send_time(jrecive, 4);
+                send_time(jfrom, type, jobj, sock, client);
                 break;
             case 5 :
                 TALK(printf("setup\n"));
