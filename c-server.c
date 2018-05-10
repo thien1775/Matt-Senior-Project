@@ -29,7 +29,7 @@
 #define POLL_EXPIRE (0)
 #define POLL_ERR (-1)
 
-#define DEBUGSocket
+//#define DEBUGSocket
 #define DEBUGCommunication
 
 #ifdef DEBUGSocket
@@ -53,26 +53,25 @@ int time_delay = 1000;
 
 char message[100] = {0};
 int makethread = 0;
-
+int spacing = 10;
 unsigned int  timer[5] = {0};
 int64_t sub[10] = {0};
 int sizeSub = 0;
 
-
 int SocketCreate(void);
 int BindCreatedSocket(int hSocket);
 void server_node(void);
-int send_setup    (int64_t jfrom, int type, json_object * jarray, int sock, struct sockaddr_in client);
-int send_broadcast(char * message, int sock, struct sockaddr_in client);
-int send_time     (int64_t jfrom, int type, json_object * jobj, int sock, struct sockaddr_in client);
+int send_setup    (int64_t jfrom, int type, json_object * jarray, int * sock, struct sockaddr_in * client);
+int send_broadcast(char * message, int * sock, struct sockaddr_in * client);
+int send_time     (int64_t jfrom, int type, json_object * jobj, int * sock, struct sockaddr_in * client);
 void printMessage(int64_t from, const char* msg);
-void error(const char *msg, int socket_desc, int* sock, int* clientLen,struct sockaddr_in client);
-void SocketRestart(int socket_desc, int* sock, int* clientLen,struct sockaddr_in client);
-int timeout_recv(int timeoutinseconds, char(* client_message) [1000], int sock, int recv_Size);
-int recive_message(char(* client_message) [1000], struct sockaddr_in client, int sock, int recv_Size);
+void error(const char *msg, int *socket_desc, int* sock, int* clientLen,struct sockaddr_in *client);
+void SocketRestart(int *socket_desc, int* sock, int* clientLen,struct sockaddr_in *client);
+int timeout_recv(int timeoutinseconds, char(* client_message) [1000], int * sock, int recv_Size);
+int recive_message(char(* client_message) [1000], int *sock, int *recv_Size);
 int checkArray(json_object *jarray);
 int checkList(int64_t jfrom);
-int send_message(int64_t dest, char * message, int sock, struct sockaddr_in client);
+int send_message(int64_t dest, char * message, int * sock, struct sockaddr_in *client);
 
 int SocketCreate(void)
 {
@@ -91,36 +90,36 @@ int SocketCreate(void)
 	return socket_desc;
 }
 
-void error(const char *msg, int socket_desc, int* sock, int* clientLen,  struct sockaddr_in client){
+void error(const char *msg, int *socket_desc, int* sock, int* clientLen,  struct sockaddr_in *client){
     //close(sock);
     perror(msg);
     //exit(0);
 	SocketRestart(socket_desc, sock, clientLen, client);
 }
 
-void SocketRestart(int socket_desc, int* sock, int *clientLen, struct sockaddr_in client){
+void SocketRestart(int *socket_desc, int* sock, int *clientLen, struct sockaddr_in *client){
     int yes=1;
-    if (setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
+    if (setsockopt(*socket_desc, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
         perror("setsockopt");
         exit(1);
     }
-    memset(&client,0,sizeof(client));
+    memset(client,0,sizeof(client));
     *clientLen = sizeof(struct sockaddr_in);
 	DSOCKET(printf("Socket Restart\n"));
     DSOCKET(printf("shut down work %d\n", shutdown(*sock,2)));
     DSOCKET(printf("close work %d\n", close(*sock)));
     sleep(10);
 
-    listen(socket_desc , 3);
+    listen(*socket_desc , 3);
     
     // Add sockets to poll list
     //accept the connection
     
     socklen_t cli_addr_size = sizeof(client);
-    *sock = accept(socket_desc,(struct sockaddr *) &client,&cli_addr_size);
+    *sock = accept(*socket_desc,(struct sockaddr *) client,&cli_addr_size);
     
     //sock = accept(hSocket, (struct sockaddr *)&client, (socklen_t*)&clientLen);
-    char *ip = inet_ntoa(client.sin_addr);
+    char *ip = inet_ntoa(client->sin_addr);
     printf("%s\n", ip);
 }
 
@@ -134,20 +133,20 @@ int checkList(int64_t jfrom){
     if( jfrom == 0){
         return 1;
     }
-    printf("%" PRId64 ", %"PRId64 ", %d\n", jfrom, sub[sizeSub-1], sizeSub);
+    //printf("%" PRId64 ", %"PRId64 ", %d\n", jfrom, sub[sizeSub-1], sizeSub);
     for(int i = 0; i < sizeSub; i++){
         if(sub[i] == jfrom){
             return 1;
         }
     }
-    printf("%" PRId64"\n", jfrom);
+    //printf("%" PRId64"\n", jfrom);
     sub[sizeSub] = jfrom;
-    printf("%" PRId64", %d\n", sub[sizeSub],sizeSub);
+    //printf("%" PRId64", %d\n", sub[sizeSub],sizeSub);
     sizeSub++;
     return -1;
 }
 
-int send_time(int64_t jfrom,int type, json_object * jobj, int sock, struct sockaddr_in client){
+int send_time(int64_t jfrom,int type, json_object * jobj, int *sock, struct sockaddr_in *client){
     unsigned int startTime = getTime();
     
     if(type == 4){
@@ -213,18 +212,21 @@ int send_time(int64_t jfrom,int type, json_object * jobj, int sock, struct socka
     json_object_object_add(jsend,"msg", jmes);
     
     //printf ("print json \n");
-    TALK(printf ("The json object created: %s\n",json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)));
-    if( sendto(sock , json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN) , strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)), 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
+    TALK(printf ("The json object created: %s\n\n\n %d",json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN),strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN))));
+    char * send = malloc(strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)+spacing));
+    memset(send,0,strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)+spacing));
+    asprintf(&send, "%s\0", json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN));
+    if( sendto(*sock , send , strlen(send), 0, (const struct sockaddr *) client, sizeof(*client)) < 0)
     {
         return -1;
     }else{
         TALK(printf("sent \n"));
         return 1;
     }
-    
+    free(send);
 }
    
-int send_setup(int64_t jfrom, int type,  json_object *jarray, int sock, struct sockaddr_in client){
+int send_setup(int64_t jfrom, int type,  json_object *jarray, int *sock, struct sockaddr_in *client){
     checkList(jfrom);
     checkArray(jarray);
     json_object *jsetup = json_object_new_object();
@@ -236,14 +238,18 @@ int send_setup(int64_t jfrom, int type,  json_object *jarray, int sock, struct s
     json_object_object_add(jsetup,"from", jnodeid);
     json_object_object_add(jsetup,"type", jtype);
     json_object_object_add(jsetup,"subs", jsub);
-    TALK(printf ("The json object created: %s\n",json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN)));
-    if( sendto(sock , json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN) ,strlen(json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN)), 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
+    TALK(printf ("\n \n The json object created: %s\n\n %d",json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN),strlen(json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN)) ));
+    char * send = malloc(strlen(json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN)+spacing));
+    memset(send,0,strlen(json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN)+spacing));
+    asprintf(&send, "%s\0", json_object_to_json_string_ext(jsetup,JSON_C_TO_STRING_PLAIN));
+    if( sendto(*sock , send,strlen(send)+ spacing, 0, (const struct sockaddr *) client, sizeof(*client)) < 0)
     {
         return -1;
     }else{
         TALK(printf("sent\n"));
         return 1;
     }
+    free(send);
 }
 
 int checkArray(json_object *jarray){
@@ -265,7 +271,7 @@ int checkArray(json_object *jarray){
     }
 }
 
-int send_broadcast(char * message, int sock, struct sockaddr_in client){
+int send_broadcast(char * message, int * sock, struct sockaddr_in * client){
 
     /*json_object *jdest = json_object_new_int64(0);
     json_object *jnodeid = json_object_new_int64(nodeid);
@@ -293,7 +299,7 @@ int send_broadcast(char * message, int sock, struct sockaddr_in client){
     return 1;
 }
 
-int send_message(int64_t dest, char * message, int sock, struct sockaddr_in client){
+int send_message(int64_t dest, char * message, int * sock, struct sockaddr_in * client){
     json_object *jdest = json_object_new_int64(dest);
     json_object *jnodeid = json_object_new_int64(nodeid);
     json_object *jtype = json_object_new_int64(8);
@@ -303,31 +309,35 @@ int send_message(int64_t dest, char * message, int sock, struct sockaddr_in clie
     json_object_object_add(jsend,"from", jnodeid);
     json_object_object_add(jsend,"type", jtype);
     json_object_object_add(jsend,"msg", jmes);
-    TALK(printf("The json object created: %s\n",json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)));
-    if( sendto(sock , json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN) , strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)), 0, (const struct sockaddr *) &client, sizeof(client)) < 0)
+    TALK(printf("The json object created: %s\n \n\n %d",json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN),strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN))));
+    char * send = malloc(strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)+spacing));
+    memset(send,0,strlen(json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN)+spacing));
+    asprintf(&send, "%s\0", json_object_to_json_string_ext(jsend,JSON_C_TO_STRING_PLAIN));
+    if( sendto(*sock , send, strlen(send), 0, (const struct sockaddr *) client, sizeof(*client)) < 0)
     {
         return -1;
     }else{
         TALK(printf("sent\n"));
         return 1;
     }
+    free(send);
 }
     
 void printMessage(int64_t jfrom, const char* msg){
     printf("from %"PRId64  ": %s",  jfrom, msg);
 }
 
-int timeout_recv(int timeoutinseconds, char(* client_message) [1000], int sock, int recv_Size){
+int timeout_recv(int timeoutinseconds, char(* client_message) [1000], int *sock, int recv_Size){
     fd_set socks;
     struct timeval t;
     FD_ZERO(&socks);
-    FD_SET(sock, &socks);
+    FD_SET(*sock, &socks);
     t.tv_sec = timeoutinseconds;
     t.tv_usec = 0;
-    int temp = select(sock + 1, &socks, NULL, NULL, &t);
+    int temp = select(*sock + 1, &socks, NULL, NULL, &t);
     if (temp >0){
 	TALK(printf("listen \n"));
-        if( recv(sock , *client_message , recv_Size, 0) == 10060){
+        if( recv(*sock , *client_message , recv_Size, 0) == 10060){
             return -1;
         }
         return 1;
@@ -337,13 +347,13 @@ int timeout_recv(int timeoutinseconds, char(* client_message) [1000], int sock, 
     }
 }
 
-int recive_message(char(* client_message) [1000], struct sockaddr_in client, int sock, int recv_Size){
+int recive_message(char(* client_message) [1000], int *sock, int *recv_Size){
     while(1){
         memset(*client_message, '\0', sizeof (*client_message));
         int left = 0 ;
         int right = 0;
         int overbound = 0;
-        if( timeout_recv(10, client_message, sock, recv_Size) < 0)
+        if( timeout_recv(10, client_message, sock, *recv_Size) < 0)
         {
             printf("WIFI recv failed");
             printf("Here1:\n");
@@ -352,8 +362,8 @@ int recive_message(char(* client_message) [1000], struct sockaddr_in client, int
         if (strcmp(*client_message, "") == 0){
             return -1;
         }
-        TALK(printf("Client reply : %s %d\n",*client_message, recv_Size));
-        for(int i = 0; i < recv_Size; i++){
+        TALK(printf("Client reply : %s %d\n",*client_message, *recv_Size));
+        for(int i = 0; i < *recv_Size; i++){
             switch((*client_message)[i]){
                 case '{':
                     left++;
@@ -362,16 +372,16 @@ int recive_message(char(* client_message) [1000], struct sockaddr_in client, int
                     right++;
                     break;
             }
-            if(left - right == 0 && i  != recv_Size-1){
+            if(left - right == 0 && i  != *recv_Size-1&& left != 0){
                 overbound = 1;
             }
         }
-        if (overbound == 1 && left - right > 0&& recv_Size > 150){
-            TALK(printf("over bound %d %d %d \n", left, right , recv_Size));
-            recv_Size = recv_Size - 12 ;
-        }else if (left - right != 0|| recv_Size < 74){
-            TALK(printf("to small %d %d %d \n", left, right , recv_Size));
-            recv_Size = recv_Size + 12*abs(left - right);
+        if (overbound == 1 && left - right > 0&& *recv_Size > 150){
+            TALK(printf("over bound %d %d %d \n", left, right , *recv_Size));
+            *recv_Size = *recv_Size - 12 ;
+        }else if (left - right != 0|| *recv_Size < 74){
+            TALK(printf("to small %d %d %d \n", left, right , *recv_Size));
+            *recv_Size = *recv_Size + 12*abs(left - right);
         }else{
             return 1;
         }
@@ -410,8 +420,8 @@ void server_node(){
         //Place connection activities here.
         printlist();
         json_object *jrecive;
-        if(recive_message(&client_message, client, sock,recv_Size) < 0){
-            error("recv\n", socket_desc, &sock,&clientLen, client);
+        if(recive_message(&client_message, &sock,&recv_Size) < 0){
+            error("recv\n", &socket_desc, &sock,&clientLen, &client);
         }
         /*if( recv(sock , client_message , recv_Size, 0) < 0)
         {
@@ -468,18 +478,18 @@ void server_node(){
         switch(type){
             case 4:
                 TALK(printf("time\n"));
-                pass =send_time(jfrom, type, jobj, sock, client);
+                pass =send_time(jfrom, type, jobj, &sock, &client);
                 break;
             case 5 :
                 TALK(printf("setup\n"));
-                pass = send_setup(0,5,jarray, sock, client);
-                usleep(time_delay+10000);
-                pass = send_setup(jfrom,6,jarray, sock, client);
+                pass = send_setup(jfrom,6,jarray, &sock, &client);
                 sleep(5);
+                pass = send_setup(0,5,jarray, &sock, &client);
+                usleep(time_delay+10000);
                 break;
             case 6 :
                 TALK(printf("response\n"));
-                pass = send_time(jfrom,type, jobj, sock, client);
+                pass = send_time(jfrom,type, jobj, &sock, &client);
                 break;
             case 8 :
                 TALK(printf("broadcast message\n"));
@@ -494,7 +504,7 @@ void server_node(){
             perror("fail send");
         }
         usleep(time_delay+10000);
-        send_broadcast("hello my name is thien", sock, client);
+        send_broadcast("hello my name is thien", &sock, &client);
         usleep(time_delay+10000);
     }
 }
