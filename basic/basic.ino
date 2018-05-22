@@ -1,3 +1,4 @@
+
 //************************************************************
 // this is a simple example that uses the painlessMesh library
 //
@@ -7,6 +8,8 @@
 //
 //************************************************************
 #include "painlessMesh.h"
+#include <ArduinoJson.h>
+
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -42,7 +45,7 @@ void nodeTimeAdjustedCallback(int32_t offset) {
 void setup() {
   Serial.begin(115200);
 
-//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
+  //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   mesh.setDebugMsgTypes( ERROR | STARTUP);  // set before init() so that you can see startup messages
 
   mesh.init( MESH_PREFIX, MESH_PASSWORD, MESH_PORT, STA_AP, WIFI_AUTH_WPA2_PSK, 6 );
@@ -61,8 +64,23 @@ void loop() {
 }
 
 void sendMessage() {
-  String msg = "Test node ";
-  msg += mesh.getNodeId();
-  mesh.sendBroadcast( msg );
+  StaticJsonBuffer<200> jsonBuffer;
+  JsonObject& root  = jsonBuffer.createObject();
+  root["topic"] = "firefighter";
+  JsonObject& message = root.createNestedObject("message");
+  message["device_id"] = 1; 
+  message["lat"] = 47.24458;
+  message["lon"] = -122.437618;
+  message["co"] = 20;
+  message["timestamp"] = 1243433;
+  String jsonStr;
+  root.printTo(jsonStr);
+  /*String ff = "ff";
+  int id = 1;
+  float lat = 47.34;
+  float lon = 122.23;
+  String msg = ff + id + lat + lon + 20.4545;
+  //String msg = " firefighter 1 47.24458 -122.437618 20.1243433";*/
+  mesh.sendBroadcast( jsonStr );
   taskSendMessage.setInterval( random( TASK_SECOND * 1, TASK_SECOND * 5 ));
 }

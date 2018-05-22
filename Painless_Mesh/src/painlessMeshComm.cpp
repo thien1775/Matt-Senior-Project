@@ -86,10 +86,19 @@ String ICACHE_FLASH_ATTR painlessMesh::buildMeshPackage(uint32_t destId, uint32_
         break;
     }
     case TIME_SYNC:
+        // TODO: Debug why we need this here. Seems something goes wrong with building the msg
+        // otherwise
         root["msg"] = jsonBuffer.parseObject(msg);
         break;
     default:
-        root["msg"] = msg;
+        char *char_array= new char [msg.length()+1];
+        strcpy(char_array, msg.c_str()); 
+        Serial.printf("%s\n", char_array);
+        if(char_array[0] == '{'){
+            root["msg"] = jsonBuffer.parseObject(msg);
+        }else{
+            root["msg"] = msg;
+        }
     }
 
     String ret;

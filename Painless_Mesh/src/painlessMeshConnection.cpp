@@ -45,7 +45,6 @@ void ICACHE_FLASH_ATTR ReceiveBuffer::push(const char * cstr,
             }
         }
     } while (length > 0);
-    Serial.printf("ReceiveBuffer = %s, buffer = %s\n buffer length = %d",  cstr, buf.buffer, buf.length);
     staticThis->debugMsg(COMMUNICATION, "ReceiveBuffer::push(): buffer size=%u, %u\n", jsonStrings.size(), buffer.length());
 }
 
@@ -78,7 +77,6 @@ size_t ICACHE_FLASH_ATTR SentBuffer::requestLength(size_t buffer_length) {
 }
 
 void ICACHE_FLASH_ATTR SentBuffer::push(String &message, bool priority) {
-    Serial.printf("SendBuffer push = %s \n", message.c_str());
     if (priority) {
         if (clean)
             jsonStrings.push_front(message);
@@ -262,7 +260,6 @@ bool ICACHE_FLASH_ATTR MeshConnection::addMessage(String &message, bool priority
     if (receiveBuffer.jsonStrings.size() > 3)
         mesh->debugMsg(DEBUG, "Msg %s\n", message.c_str());
     */
-    Serial.printf("addMessage message : %s \n", message.c_str());
     if (ESP.getFreeHeap() - message.length() >= MIN_FREE_MEMORY) { // If memory heap is enough, queue the message
         if (priority) {
             sentBuffer.push(message, priority);
@@ -542,7 +539,6 @@ void ICACHE_FLASH_ATTR meshRecvCb(void * arg, AsyncClient *client, void * data, 
 
     receiveConn->receiveBuffer.push(static_cast<const char*>(data), len, shared_buffer);
 
-    Serial.printf("%s\n", static_cast<const char*>(data));
     // Signal that we are done
     client->ack(len); // ackLater?
     //client->ackLater();
