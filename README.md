@@ -13,3 +13,9 @@ to install json do: sudo apt-get install libjson-c-dev
 run code 
 
 gcc -o server 5c-server.c -I/usr/include/json-c -L/usr/lib -ljson-c -lpthread
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+download node js
+downlaod git.
+install npm using git.
+run using git: node socket.js
